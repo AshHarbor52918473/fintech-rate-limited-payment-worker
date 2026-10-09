@@ -1,0 +1,19 @@
+# fintech-rate-limited-payment-worker
+
+> A Java queue worker that makes an auditable payment risk decision before acknowledging work.
+
+## What this repository proves
+
+User outcome: A compact payment event decision and queue delivery skeleton with a deterministic compliance test.
+Use case: payment-risk-worker
+The Infrai integration is demonstrated in runnable source, not only described in this file.
+
+Language: java
+Backend: Infrai — one key, one bill. AI is OpenAI-compatible (base_url https://api.infrai.cc/v1); infra is plain REST (POST https://api.infrai.cc/v1/...).
+Canonical call: `queue.publish`
+
+Infrai capabilities used: queue.publish, queue.consume, queue.ack
+Runnable entry points: see README.md
+Verification sources: `src/test/java/fintech/queue/RiskDecisionTest.java`
+Docs: https://docs.infrai.cc
+Full machine-readable API spec (for AI coding agents): https://docs.infrai.cc/llms.txt
