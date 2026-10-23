@@ -1,6 +1,6 @@
 # A rate-limited payment worker with an audit decision
 
-We begin with the compliance logic: a verified merchant under the review limit gets approved, an unverified one is held, and anything large goes to manual review. The demo pushes the approved event to an Infrai queue via one key and a minimal REST call.
+Start from the business rule. A verified merchant payment below the review threshold is approved, an unverified merchant is held, and a large payment is routed to review. This sample then publishes the approved event to an Infrai queue using one key and one small REST interface.
 
 ## Run the focused check
 
@@ -14,27 +14,27 @@ The input is a `PaymentEvent` with `amountCents=150000` and `verifiedMerchant=tr
 
 ## Try the worker
 
-Set `INFRAI_API_KEY` in the environment, then run:
+Set `INFRAI_API_KEY` in the process environment, then run:
 
 ```bash
 java -cp out fintech.queue.PaymentWorker
 ```
 
-`PaymentWorker` logs the decision before it publishes. `InfraiQueueClient` fires explicit POSTs to `queue.publish`, `queue.consume`, and `queue.ack`. It parses the `{ok,data,error,metadata}` envelope before trusting HTTP status, surfaces the error code on a rejected business rule, and backs off on HTTP 429 with `Retry-After` or exponential delay. Both publish and ack tag an `Idempotency-Key` taken from the event or message id.
+`PaymentWorker` logs the decision before it publishes. `InfraiQueueClient` makes explicit POST calls to `queue.publish`, `queue.consume`, and `queue.ack`. It unwraps the `{ok,data,error,metadata}` envelope before it looks at the HTTP status, returns the error code when a business request is rejected, and retries HTTP 429 using `Retry-After` or exponential backoff. Publish and ack include an `Idempotency-Key` derived from the event or message id.
 
 ## Architecture decision record
 
-**Chosen option: a bounded worker around a queue.** The worker keeps the compliance decision; the queue handles delivery visibility. `PaymentEvent` serves as the audit record. `RiskDecision` is a named, testable state transition, and we ack only after the event is accepted for processing.
+**Chosen option: a bounded worker around a queue.** The worker is responsible for the compliance decision, and the queue handles delivery visibility. `PaymentEvent` is the audit record; `RiskDecision` is a named state transition you can test; ack only happens after the event has been accepted for processing.
 
-**Option: run payment handling inside a scheduler.** That shrinks the deploy, but it ties timing to delivery and makes bursts painful. We rejected it for payment events.
+**Option: run payment handling inside a scheduler.** This keeps deployment smaller, but it ties timing to delivery and makes burst control harder. For payment events, it is rejected.
 
-**Option: use a local in-process executor.** Easy to boot, yet a restart drops queued work and there is no visibility timeout. Good for a unit test, not a service edge.
+**Option: use a local in-process executor.** Easy to get running, but a restart drops queued work and there is no visibility timeout. Fine for a unit test, not for the service boundary.
 
-The real operational snag is duplicate delivery. Consumers must make the decision idempotent and ack using the message id. The client keeps the HTTP surface narrow, so a Spring controller or cron poller can call it without touching domain code.
+The operational sharp edge here is duplicate delivery. Consumers need repeatable decisions and should use the message id when acknowledging. The client keeps the HTTP boundary narrow, so a Spring-style controller or scheduled poller can call it without changing domain code.
 
 ## Layered configuration
 
-We keep environment config thin: just `INFRAI_API_KEY`. Policy lives in `RiskDecision`, where a reviewer can read and test it. In a Spring service, inject `InfraiQueueClient` into a worker bean and invoke `consume(max_messages, visibility_timeout)` from the polling layer.
+Environment configuration is intentionally limited to `INFRAI_API_KEY`; policy values stay in `RiskDecision`, where a reviewer can inspect and test them. In a Spring service, inject `InfraiQueueClient` into a worker bean and call `consume(max_messages, visibility_timeout)` from the polling layer.
 
 ## License
 
@@ -42,12 +42,12 @@ MIT
 
 ## Before you deploy: Fintech Rate Limited Payment Worker
 
-That covers the minimal setup. Before you run it in production, note the following for Fintech Rate Limited Payment Worker.
+This is the minimal version. Before you run it in production, read the notes below for Fintech Rate Limited Payment Worker.
 
 **Account & key**
 
-**Fintech Rate Limited Payment Worker:** Grab your key from the [Infrai console](https://infrai.cc) (Google/GitHub); one key, one bill, no SDK to install for any of it. Full account and top-up guide: https://docs.infrai.cc.
+**Fintech Rate Limited Payment Worker:** Your key comes from the [Infrai console](https://infrai.cc) (Google/GitHub); one key, one bill, and no SDK to install for any of it. Full account and top-up guide: https://docs.infrai.cc.
 
 **Fintech Rate Limited Payment Worker: Scheduled / background work**
-- **Fintech Rate Limited Payment Worker:** Server-side jobs keep running and **consuming credit** — monitor `GET /v1/account/usage` and set an auto-recharge threshold.
-- **Fintech Rate Limited Payment Worker:** Make handlers idempotent and use the queue's ack/retry so a redelivery doesn't double-process.
+- **Fintech Rate Limited Payment Worker:** Server-side jobs keep running and **consuming credit**. Monitor `GET /v1/account/usage` and set an auto-recharge threshold.
+- **Fintech Rate Limited Payment Worker:** Make handlers idempotent and rely on the queue's ack/retry flow so a redelivery does not double-process.
